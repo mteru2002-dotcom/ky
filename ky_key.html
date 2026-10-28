@@ -32,7 +32,11 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .bar button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
 .bar button:disabled,.padhead button:disabled{opacity:.4}
 .datepick{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--bar-fg);background:#30373c;border:1px solid #4a5257;border-radius:8px;min-height:40px;padding:0 4px 0 10px}
-.datepick input{font:inherit;font-size:14px;min-height:32px;border-radius:6px;border:0;padding:0 6px;background:#fff;color:#111;color-scheme:light}
+.dwrap{position:relative;display:inline-block}
+.datepick input{font:inherit;font-size:14px;height:32px;min-width:150px;box-sizing:border-box;-webkit-appearance:none;appearance:none;display:block;border-radius:6px;border:0;padding:0 8px;background:#fff;color:#111;color-scheme:light}
+.datepick input::-webkit-date-and-time-value{text-align:left}
+#datePick.empty,#datePick.empty::-webkit-datetime-edit{color:transparent}
+#dateEmpty{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:#7d868c;pointer-events:none}
 .dot{display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;border:2px solid #fff3}
 .w{display:inline-block;background:currentColor;border-radius:4px;width:22px;vertical-align:middle}
 .brand{font-weight:700;letter-spacing:.04em;margin-right:4px;white-space:nowrap}
@@ -119,14 +123,13 @@ body.eraser canvas{cursor:cell}
   <span class="sep sheetOnly"></span>
   <div class="grp sheetOnly">
     <button id="today">今日の日付</button>
-    <label class="datepick" title="カレンダーから日付を選ぶ">日付<input type="date" id="datePick"></label>
+    <label class="datepick" title="カレンダーから日付を選ぶ">日付<span class="dwrap"><input type="date" id="datePick"><span id="dateEmpty">タップして選択</span></span></label>
     <button id="clearDate">日付を消す</button>
     <button id="direct" aria-pressed="false" title="オンにすると拡大せず用紙に直接書きます">直接書く</button>
   </div>
   <span class="sep sheetOnly"></span>
   <div class="grp sheetOnly">
     <button id="save">PDFで保存</button>
-    <button id="print">印刷・PDF</button>
     <button id="clear">新しい用紙</button>
   </div>
 </div>
@@ -539,14 +542,14 @@ function press(ids,on){ids.forEach(id=>$(id).setAttribute('aria-pressed',id===on
 function setEraser(v){eraser=v;$('eraser').setAttribute('aria-pressed',v);document.body.classList.toggle('eraser',v);}
 $('eraser').onclick=()=>setEraser(!eraser);
 $('direct').onclick=e=>{direct=!direct;e.currentTarget.setAttribute('aria-pressed',direct);status(direct?'用紙に直接書けます（ペンのみ）':'');};
-function syncDate(){const el=$('datePick');if(!el)return;el.value=dateText?`${dateText.y}-${dateText.m.padStart(2,'0')}-${dateText.d.padStart(2,'0')}`:'';}
+function syncDate(){const el=$('datePick');if(!el)return;el.value=dateText?`${dateText.y}-${dateText.m.padStart(2,'0')}-${dateText.d.padStart(2,'0')}`:'';$('dateEmpty').hidden=!!el.value;el.classList.toggle('empty',!el.value);}
 function setDateFromISO(v){const prev=snap();if(!v)dateText=null;else{const [y,m,d]=v.split('-').map(Number);const dt=new Date(y,m-1,d);dateText={y:String(y),m:String(m),d:String(d),wd:'日月火水木金土'[dt.getDay()]};}commit(prev);redrawAll();syncDate();}
 $('datePick').onchange=e=>setDateFromISO(e.target.value);
 $('clearDate').onclick=()=>{if(!dateText)return;const prev=snap();dateText=null;commit(prev);redrawAll();syncDate();if(MODE==='key'&&kcur>=0&&!kpanel.hidden)renderK();};
 $('today').onclick=()=>{const d=new Date(),prev=snap();dateText={y:String(d.getFullYear()),m:String(d.getMonth()+1),d:String(d.getDate()),wd:'日月火水木金土'[d.getDay()]};commit(prev);redrawAll();syncDate();};
 $('clear').onclick=()=>{$('confirm').hidden=false;};
 $('confirmNo').onclick=()=>{$('confirm').hidden=true;};
-$('confirmYes').onclick=()=>{$('confirm').hidden=true;const prev=snap();strokes=[];dateText=MODE!=='key'?todayText():null;vals={};commit(prev);redrawAll();syncDate();status('新しい用紙（「戻す」で元に戻せます）');};
+$('confirmYes').onclick=()=>{$('confirm').hidden=true;const prev=snap();strokes=[];dateText=todayText();vals={};commit(prev);redrawAll();syncDate();status('新しい用紙（「戻す」で元に戻せます）');};
 
 /* ---------- 書き出し ---------- */
 function exportCanvas(s){
@@ -580,8 +583,6 @@ $('save').onclick=async()=>{
 $('shareBtn').onclick=()=>{};
 $('closeModal').onclick=()=>{$('modal').hidden=true;};
 const inFrame=(()=>{try{return window.self!==window.top;}catch(_){return true;}})();
-if(inFrame)$('print').hidden=true;
-$('print').onclick=()=>{const im=$('printImg');im.onload=()=>setTimeout(()=>window.print(),50);im.src=exportCanvas(3).toDataURL('image/png');};
 
 /* ---------- キーボード入力版 ---------- */
 const KF=[]; let kcur=-1, kPrev=null;
@@ -740,9 +741,9 @@ if(MODE==='key'){
 /* ---------- 起動 ---------- */
 function todayText(){const d=new Date();return {y:String(d.getFullYear()),m:String(d.getMonth()+1),d:String(d.getDate()),wd:'日月火水木金土'[d.getDay()]};}
 load();
+if(!dateText){dateText=todayText();save();}   // 開いた時点で今日の日付を入れる（両方の版）
 if(MODE!=='key'){
   $('today').hidden=true;
-  if(!dateText){dateText=todayText();save();}   // 開いた時点で今日の日付を入れる
   width=+$('w1').dataset.w;['w1','w2','w3'].forEach(id=>$(id).setAttribute('aria-pressed',id==='w1'));  // 線はデフォルトで細線
 }
 ui();syncDate();
